@@ -2,6 +2,7 @@ import { state, ledger, tradeRunningBalance, currentAccount, saveTrade, deleteTr
 import { toast, confirmDialog, fmtMoney, fmtNum, fmtDate, todayISO, escapeHtml, countUp, optionsHtml, skeletonRows } from "../ui.js";
 import { openModal } from "../modal.js";
 import { exportTradesPDF } from "../export.js";
+import { openFullReport } from "../fullReport.js";
 
 const ALL_COLUMNS = [
   ["idx", "#"], ["date", "Date"], ["session", "Session"], ["side", "Side"], ["level", "Level"],
@@ -38,6 +39,7 @@ export function render(container) {
       <button class="btn btn-ghost" id="btn-deposit"><i data-lucide="arrow-down-circle"></i> Deposit</button>
       <button class="btn btn-ghost" id="btn-withdraw"><i data-lucide="arrow-up-circle"></i> Withdraw</button>
       <button class="btn btn-ghost" id="btn-dup"><i data-lucide="copy"></i> Duplicate Last</button>
+      <button class="btn btn-ghost" id="btn-full-report"><i data-lucide="file-down"></i> Download Full Report PDF</button>
       <button class="btn btn-gold" id="btn-new"><i data-lucide="plus"></i> New Trade</button>
     </div>
   </div>
@@ -194,6 +196,7 @@ function wire(container) {
   });
   container.querySelector("#btn-deposit").addEventListener("click", () => openCashModal("deposit", rerender));
   container.querySelector("#btn-withdraw").addEventListener("click", () => openCashModal("withdraw", rerender));
+  container.querySelector("#btn-full-report").addEventListener("click", () => openFullReport());
 
   container.querySelector("#btn-clear-all").addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "Clear all trades?", body: "This permanently deletes every trade in this account. Cash transactions are kept.", confirmText: "Delete all" });
