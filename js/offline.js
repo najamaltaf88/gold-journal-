@@ -3,6 +3,8 @@
 
 const SNAP_PREFIX = "gj-snap-";
 const QUEUE_PREFIX = "gj-queue-";
+const ACCT_PREFIX = "gj-accts-";
+const OPTS_PREFIX = "gj-opts-";
 
 function read(key, fallback) {
   try {
@@ -28,6 +30,24 @@ export function saveSnapshot(userId, accountId, data) {
 export function loadSnapshot(userId, accountId) {
   if (!userId || !accountId) return null;
   return read(SNAP_PREFIX + userId + "-" + accountId, null);
+}
+
+// ---- accounts + options cache (so the app can boot offline) ----
+export function saveAccountsCache(userId, accounts, currentAccountId) {
+  if (!userId) return;
+  write(ACCT_PREFIX + userId, { accounts, currentAccountId });
+}
+export function loadAccountsCache(userId) {
+  if (!userId) return null;
+  return read(ACCT_PREFIX + userId, null);
+}
+export function saveOptionsCache(userId, options) {
+  if (!userId) return;
+  write(OPTS_PREFIX + userId, options);
+}
+export function loadOptionsCache(userId) {
+  if (!userId) return null;
+  return read(OPTS_PREFIX + userId, null);
 }
 
 // ---- offline write queue ----

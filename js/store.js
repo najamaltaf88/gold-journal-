@@ -3,7 +3,10 @@
 import { getSupabase, humanError } from "./supabaseClient.js";
 import { SCREENSHOTS_BUCKET } from "./config.js";
 import { DEFAULT_OPTIONS } from "./defaults.js";
-import { saveSnapshot, loadSnapshot, getQueue, enqueue, flushQueue } from "./offline.js";
+import {
+  saveSnapshot, loadSnapshot, getQueue, enqueue, flushQueue,
+  saveAccountsCache, loadAccountsCache, saveOptionsCache, loadOptionsCache,
+} from "./offline.js";
 
 const listeners = new Set(); // data-changed listeners
 const syncListeners = new Set(); // sync-status listeners
@@ -160,6 +163,17 @@ const sb = () => {
 
 // ---------- accounts ----------
 export async function ensureAccount() {
+  if (!navigator.onLine) {
+    const cached = loadAccountsCache(state.user.id);
+    state.accounts = cached?.accounts || [];
+    const saved = localStorage.getItem("gj-account-" + state.user.id);
+    state.currentAccountId =
+      (saved && state.accounts.some((a) => a.id === saved) && saved) ||
+      cached?.currentAccountId ||
+      state.accounts[0]?.id ||
+      null;
+    return;
+  }
   const { data, error } = await sb()
     .from("accounts")
     .select("*")
@@ -179,6 +193,7 @@ export async function ensureAccount() {
   const saved = localStorage.getItem("gj-account-" + state.user.id);
   state.currentAccountId =
     (saved && accounts.some((a) => a.id === saved) && saved) || accounts[0].id;
+  saveAccountsCache(state.user.id, accounts, state.currentAccountId);
 }
 
 export function currentAccount() {
@@ -228,6 +243,10 @@ export async function updateAccountStartingBalance(id, val) {
 
 // ---------- options (custom lists) ----------
 export async function loadOptions() {
+  if (!navigator.onLine) {
+    state.options = loadOptionsCache(state.user.id) || structuredClone(DEFAULT_OPTIONS);
+    return;
+  }
   const { data, error } = await sb()
     .from("journal_meta")
     .select("value")
@@ -237,6 +256,7 @@ export async function loadOptions() {
   const merged = structuredClone(DEFAULT_OPTIONS);
   if (data?.value) Object.assign(merged, data.value);
   state.options = merged;
+  saveOptionsCache(state.user.id, merged);
 }
 
 export async function saveOptions(options) {
