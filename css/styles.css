@@ -340,6 +340,19 @@ body.gj-modal-open { overflow: hidden; }
 .progress.hidden { display: none; }
 .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), var(--gold-2)); transition: width 0.3s; }
 
+/* Full Report export modals */
+.fr-warn .fr-lead { font-size: 15px; margin: 0 0 6px; }
+.fr-warn .fr-est { color: var(--muted); margin: 0 0 12px; }
+.fr-keepopen { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gold); background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: 10px; padding: 10px 12px; margin: 0 0 14px; }
+.fr-keepopen i { width: 18px; height: 18px; flex-shrink: 0; }
+.fr-toggle { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 8px; cursor: pointer; }
+.fr-toggle-title { display: block; font-weight: 600; font-size: 14px; }
+.fr-toggle-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.fr-toggle input { width: 18px; height: 18px; accent-color: var(--gold); flex-shrink: 0; }
+.fr-progress .fr-status { font-size: 14px; font-weight: 500; margin: 0 0 4px; }
+.fr-progress .progress { height: 10px; margin-top: 6px; }
+.fr-progress .fr-hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+
 .view-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .view-item { display: flex; flex-direction: column; gap: 3px; background: rgba(255, 255, 255, 0.03); padding: 9px 11px; border-radius: 9px; }
 .vk { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
