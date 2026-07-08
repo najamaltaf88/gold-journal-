@@ -59,11 +59,23 @@ export function render(container) {
     <div class="chart-card glass"><h6>P&L by Level</h6><canvas id="c-level"></canvas></div>
     <div class="chart-card glass"><h6>P&L by Confirmation</h6><canvas id="c-confirm"></canvas></div>
     <div class="chart-card glass wide"><h6>Common Mistakes</h6><canvas id="c-mistakes"></canvas></div>
+  </div>
+  <div class="heatmap-card glass">
+    <div class="heatmap-head">
+      <h6>Performance Heatmap</h6>
+      <div class="heatmap-tabs">
+        ${["edge", "hour", "session", "level", "tf", "setup"].map((tab) => `<button class="heatmap-tab ${tab === "edge" ? "active" : ""}" data-heatmap="${tab}">${heatmapTabLabel(tab)}</button>`).join("")}
+      </div>
+    </div>
+    <div id="heatmap-body">${heatmapHtml("edge")}</div>
   </div>`}`;
 
   window.lucide?.createIcons({ nameAttr: "data-lucide" });
   container.querySelector("#btn-demo").addEventListener("click", () => loadDemo(() => render(container)));
-  if (trades.length) drawCharts();
+  if (trades.length) {
+    wireHeatmap(container);
+    drawCharts();
+  }
 }
 
 function stat(label, value, icon, money) {
@@ -76,6 +88,165 @@ const GREEN = "#3ecf8e";
 const RED = "#ff5c6c";
 const GRID = "rgba(255,255,255,0.06)";
 const TICK = "#8b93a7";
+
+function heatmapTabLabel(tab) {
+  return { edge: "Level Edge", hour: "By Hour", session: "By Session", level: "By Level", tf: "By TF", setup: "By Setup" }[tab];
+}
+
+function wireHeatmap(container) {
+  const body = container.querySelector("#heatmap-body");
+  container.querySelectorAll("[data-heatmap]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      container.querySelectorAll("[data-heatmap]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      body.innerHTML = heatmapHtml(btn.dataset.heatmap);
+    });
+  });
+}
+
+function heatmapHtml(tab) {
+  if (tab === "edge") return levelEdgeHtml();
+  if (tab === "hour") return hourHeatmapHtml();
+  const configs = {
+    session: ["Session", (t) => t.session, state.options.sessions],
+    level: ["Level", (t) => t.level, state.options.levels],
+    tf: ["TF", (t) => t.timeframe, state.options.timeframes],
+    setup: ["Setup", (t) => t.setup_quality, state.options.setupQuality],
+  };
+  const [label, keyFn, defaults] = configs[tab];
+  return dimensionHeatmapHtml(label, keyFn, defaults);
+}
+
+function resultCounts(trades) {
+  const wins = trades.filter((t) => t.result === "Win").length;
+  const losses = trades.filter((t) => t.result === "Loss").length;
+  const decided = wins + losses;
+  const pnl = trades.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+  return { total: trades.length, wins, losses, pnl, avgPnl: trades.length ? pnl / trades.length : 0, winRate: decided ? (wins / decided) * 100 : 0 };
+}
+
+function heatClass(stats) {
+  if (!stats.total) return "";
+  if (stats.winRate > 60) return "hm-pos";
+  if (stats.winRate < 40) return "hm-neg";
+  return "hm-mid";
+}
+
+function hourHeatmapHtml() {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const blocks = [
+    ["00-04", 0, 3],
+    ["04-08", 4, 7],
+    ["08-12", 8, 11],
+    ["12-16", 12, 15],
+    ["16-20", 16, 19],
+    ["20-24", 20, 23],
+  ];
+  const buckets = Array.from({ length: 7 }, () => blocks.map(() => []));
+  for (const t of state.trades) {
+    const base = t.created_at ? new Date(t.created_at) : new Date(`${t.trade_date}T00:00:00Z`);
+    if (Number.isNaN(base.getTime())) continue;
+    const pkt = new Date(base.getTime() + 5 * 60 * 60 * 1000);
+    const day = pkt.getUTCDay();
+    const hour = pkt.getUTCHours();
+    const block = blocks.findIndex(([, start, end]) => hour >= start && hour <= end);
+    if (block >= 0) buckets[day][block].push(t);
+  }
+  return `<div class="hm-hour-grid">
+    <div></div>
+    ${blocks.map(([label]) => `<div class="hm-col-head">${label}</div>`).join("")}
+    ${days.map((day, dayIndex) => `
+      <div class="hm-row-head">${day}</div>
+      ${blocks.map((_, blockIndex) => {
+        const stats = resultCounts(buckets[dayIndex][blockIndex]);
+        return `<div class="hm-cell ${heatClass(stats)}">${stats.total ? `<strong>${stats.total} trades</strong><span>${stats.wins}W / ${stats.losses}L</span>` : ""}</div>`;
+      }).join("")}
+    `).join("")}
+  </div>`;
+}
+
+function dimensionHeatmapHtml(label, keyFn, defaults = []) {
+  const values = [...new Set([...(defaults || []), ...state.trades.map(keyFn).filter(Boolean)])];
+  if (!values.length) return `<div class="empty-state">No ${label.toLowerCase()} data yet.</div>`;
+  return `<div class="hm-dim-grid">
+    <div class="hm-col-head">${label}</div>
+    <div class="hm-col-head">Total Trades</div>
+    <div class="hm-col-head">Wins</div>
+    <div class="hm-col-head">Losses</div>
+    <div class="hm-col-head">Win Rate %</div>
+    ${values.map((value) => {
+      const stats = resultCounts(state.trades.filter((t) => keyFn(t) === value));
+      return `<div class="hm-row-label ${heatClass(stats)}">${escapeHtml(value)}</div>
+        <div class="hm-metric ${heatClass(stats)}">${stats.total}</div>
+        <div class="hm-metric ${heatClass(stats)}">${stats.wins}</div>
+        <div class="hm-metric ${heatClass(stats)}">${stats.losses}</div>
+        <div class="hm-metric ${heatClass(stats)}">${stats.total ? stats.winRate.toFixed(1) : "0.0"}%</div>`;
+    }).join("")}
+  </div>`;
+}
+
+function levelEdgeHtml() {
+  const combos = new Map();
+  for (const t of state.trades) {
+    const level = t.level || "-";
+    const tf = t.timeframe || "-";
+    const session = t.session || "-";
+    const key = `${level}|||${tf}|||${session}`;
+    if (!combos.has(key)) combos.set(key, { level, tf, session, trades: [] });
+    combos.get(key).trades.push(t);
+  }
+  const rows = [...combos.values()]
+    .map((row) => ({ ...row, stats: resultCounts(row.trades) }))
+    .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.pnl - a.stats.pnl || b.stats.total - a.stats.total);
+  if (!rows.length) return `<div class="empty-state">No level data yet.</div>`;
+
+  const topRows = rows.filter((row) => row.stats.total > 0 && row.stats.pnl > 0).slice(0, 4);
+  return `
+    <div class="edge-summary">
+      ${topRows.length ? topRows.map((row) => edgeCard(row)).join("") : `<div class="edge-empty">No profitable level combinations yet.</div>`}
+    </div>
+    <div class="edge-grid">
+      <div class="hm-col-head">Level</div>
+      <div class="hm-col-head">TF</div>
+      <div class="hm-col-head">Session</div>
+      <div class="hm-col-head">Trades</div>
+      <div class="hm-col-head">W / L</div>
+      <div class="hm-col-head">Win Rate</div>
+      <div class="hm-col-head">Net P&L</div>
+      <div class="hm-col-head">Avg P&L</div>
+      ${rows.map((row) => {
+        const cls = edgeClass(row.stats);
+        return `<div class="edge-cell edge-main ${cls}">${escapeHtml(row.level)}</div>
+          <div class="edge-cell ${cls}">${escapeHtml(row.tf)}</div>
+          <div class="edge-cell ${cls}">${escapeHtml(row.session)}</div>
+          <div class="edge-cell ${cls}">${row.stats.total}</div>
+          <div class="edge-cell ${cls}">${row.stats.wins}W / ${row.stats.losses}L</div>
+          <div class="edge-cell ${cls}">${row.stats.winRate.toFixed(1)}%</div>
+          <div class="edge-cell ${cls}">${fmtMoney(row.stats.pnl)}</div>
+          <div class="edge-cell ${cls}">${fmtMoney(row.stats.avgPnl)}</div>`;
+      }).join("")}
+    </div>`;
+}
+
+function edgeCard(row) {
+  return `<div class="edge-card ${edgeClass(row.stats)}">
+    <div class="edge-card-title">${escapeHtml(row.level)}</div>
+    <div class="edge-card-sub">${escapeHtml(row.tf)} &middot; ${escapeHtml(row.session)}</div>
+    <div class="edge-card-metrics">
+      <span>${row.stats.total} trades</span>
+      <span>${row.stats.wins}W / ${row.stats.losses}L</span>
+      <span>${row.stats.winRate.toFixed(1)}%</span>
+      <span>${fmtMoney(row.stats.pnl)}</span>
+    </div>
+  </div>`;
+}
+
+function edgeClass(stats) {
+  if (!stats.total) return "";
+  if (stats.pnl > 0 && stats.winRate >= 60) return "hm-pos";
+  if (stats.pnl < 0 || stats.winRate < 40) return "hm-neg";
+  return "hm-mid";
+}
 
 async function drawCharts() {
   try {
