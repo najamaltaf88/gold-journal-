@@ -17,6 +17,7 @@ import * as pnl from "./pages/pnl.js";
 import * as weekly from "./pages/weekly.js";
 import * as ai from "./pages/ai.js";
 import * as options from "./pages/options.js";
+import { getNotificationCenter } from "./goalsAlerts.js";
 
 const PAGES = {
   tradelog: { title: "Trade Log", icon: "candlestick-chart", mod: tradelog },
@@ -195,6 +196,7 @@ function renderShell() {
   renderSidebarUser();
   renderAccounts();
   renderSidebarStats();
+  renderGoalsNavBadge();
   updateSync(state.sync);
   renderDiagnostics();
   refreshInstallUI();
@@ -321,6 +323,23 @@ function renderSidebarStats() {
     <div class="mini-stat"><span>Trades</span><b>${state.trades.length}</b></div>`;
 }
 
+function renderGoalsNavBadge() {
+  const unread = getNotificationCenter().unreadCount;
+  const btn = root().querySelector('.nav-item[data-page="goals"]');
+  if (!btn) return;
+  let badge = btn.querySelector('.nav-badge');
+  if (unread > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'nav-badge';
+      btn.appendChild(badge);
+    }
+    badge.textContent = unread;
+  } else {
+    badge?.remove();
+  }
+}
+
 function updateSync(status) {
   const el = root().querySelector("#sb-sync");
   if (!el) return;
@@ -358,6 +377,11 @@ function navigate(page) {
   void pageEl.offsetWidth;
   pageEl.classList.add("fade-in");
   PAGES[page].mod.render(pageEl);
+  if (page === "goals") {
+    const badge = root().querySelector('.nav-item[data-page="goals"] .nav-badge');
+    badge?.remove();
+    renderGoalsNavBadge();
+  }
 }
 
 // ---------------- reactivity ----------------

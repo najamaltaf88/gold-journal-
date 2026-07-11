@@ -39,32 +39,78 @@ export const DEFAULT_GOALS = [
   { title: "Profit Factor", type: "profit_factor", period: "monthly", target_value: 1.5, comparison: "gte", is_default: true },
 ];
 
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+export function getPKTDate(date = new Date()) {
+  return new Date(date.getTime() + PKT_OFFSET_MS);
+}
+
+export function getPKTDateKey(date = new Date()) {
+  return getPKTDate(date).toISOString().slice(0, 10);
+}
+
+export function getPKTWeekStartKey(date = new Date()) {
+  const d = getPKTDate(date);
+  d.setUTCHours(0, 0, 0, 0);
+  const day = d.getUTCDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setUTCDate(d.getUTCDate() + diffToMon);
+  return mon.toISOString().slice(0, 10);
+}
+
+export function getPKTMonthKey(date = new Date()) {
+  const d = getPKTDate(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 7);
+}
+
+export function isPKTDateInCurrentPeriod(dateKey, period, now = new Date()) {
+  if (!dateKey) return false;
+  if (period === "daily") return dateKey === getPKTDateKey(now);
+  if (period === "weekly") {
+    const weekStart = getPKTWeekStartKey(now);
+    const weekEnd = new Date(Date.UTC(
+      Number(weekStart.slice(0, 4)),
+      Number(weekStart.slice(5, 7)) - 1,
+      Number(weekStart.slice(8, 10))
+    ));
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    const endKey = weekEnd.toISOString().slice(0, 10);
+    return dateKey >= weekStart && dateKey <= endKey;
+  }
+  if (period === "monthly") {
+    return dateKey.slice(0, 7) === getPKTMonthKey(now);
+  }
+  return false;
+}
+
 const toISO = (d) => d.toISOString().slice(0, 10);
 
 export function periodRange(period, refDate = new Date()) {
-  const d = new Date(refDate);
-  d.setHours(0, 0, 0, 0);
+  const d = getPKTDate(refDate);
+  d.setUTCHours(0, 0, 0, 0);
   if (period === "daily") {
     const iso = toISO(d);
     return { start: iso, end: iso };
   }
   if (period === "weekly") {
-    const day = d.getDay();
+    const day = d.getUTCDay();
     const diffToMon = day === 0 ? -6 : 1 - day;
     const mon = new Date(d);
-    mon.setDate(d.getDate() + diffToMon);
+    mon.setUTCDate(d.getUTCDate() + diffToMon);
     const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
+    sun.setUTCDate(mon.getUTCDate() + 6);
     return { start: toISO(mon), end: toISO(sun) };
   }
-  const first = new Date(d.getFullYear(), d.getMonth(), 1);
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
   return { start: toISO(first), end: toISO(last) };
 }
 
 export function monthRange(year, month) {
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
+  const first = new Date(Date.UTC(year, month, 1));
+  const last = new Date(Date.UTC(year, month + 1, 0));
   return { start: toISO(first), end: toISO(last) };
 }
 

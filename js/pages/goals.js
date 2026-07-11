@@ -8,6 +8,7 @@ import {
 } from "../goalsAlerts.js";
 import {
   listPastMonths, monthHistory, customTrackToType, comparisonFromDirection,
+  getPKTDate, getPKTDateKey,
 } from "../goalsEngine.js";
 import { toast, confirmDialog, escapeHtml, fmtNum } from "../ui.js";
 import { openModal } from "../modal.js";
@@ -36,11 +37,13 @@ export function render(container) {
       <p class="page-sub">Trading discipline targets for ${escapeHtml(acc?.name || "")}</p>
     </div>
     <div class="page-actions">
-      <button class="btn btn-ghost btn-sm" id="btn-notify" title="Desktop notifications">
-        <i data-lucide="bell"></i> ${notifyBtnLabel()}
-      </button>
+      ${notificationToggleHtml()}
       <button class="btn btn-gold" id="btn-add-goal"><i data-lucide="plus"></i> Add Custom Goal</button>
     </div>
+  </div>
+
+  <div class="notification-dropdown glass card-pad" id="notification-dropdown" hidden>
+    ${notificationDropdownHtml()}
   </div>
 
   <div class="goals-toolbar glass">
@@ -59,10 +62,6 @@ export function render(container) {
     ${periods.map((p) => sectionHtml(p, evaluated.filter((e) => e.goal.period === p))).join("")}
   </div>
 
-  <div class="notification-center glass card-pad" id="notification-center">
-    ${notificationCenterHtml()}
-  </div>
-
   <div class="goals-history glass card-pad">
     <div class="gh-head">
       <h6><i data-lucide="history"></i> Past Periods</h6>
@@ -78,11 +77,29 @@ export function render(container) {
   startRecalcTimer(container);
 }
 
-function notifyBtnLabel() {
+function notifyButtonHtml() {
   const p = notificationPermission();
-  if (p === "granted") return "Notifications on";
-  if (p === "denied") return "Notifications blocked";
-  return "Enable desktop notifications";
+  const { unreadCount } = getNotificationCenter();
+  if (p === "denied") {
+    return `<span class="notify-state blocked">blocked</span>`;
+  }
+  if (p === "granted") {
+    return unreadCount > 0 ? `<span class="notify-count">${unreadCount}</span>` : "";
+  }
+  return "";
+}
+
+function notificationToggleHtml() {
+  const p = notificationPermission();
+  const unreadCount = getNotificationCenter().unreadCount;
+  return `
+  <button class="btn btn-ghost btn-sm notify-toggle ${p === "denied" ? "blocked" : ""}" id="btn-notify" title="Notifications" aria-expanded="false">
+    <span class="notify-icon">
+      <i data-lucide="bell"></i>
+      ${p === "granted" && unreadCount > 0 ? `<span class="notify-count">${unreadCount}</span>` : ""}
+    </span>
+    ${p === "denied" ? `<span class="notify-state blocked">blocked</span>` : ""}
+  </button>`;
 }
 
 function sectionHtml(period, items) {
@@ -217,43 +234,44 @@ function pastMonthsHtml() {
   </table>`;
 }
 
-function notificationCenterHtml() {
+function notificationDropdownHtml() {
   const { todayNotif, olderNotif, unreadCount, totalCount } = getNotificationCenter();
-  
-  if (totalCount === 0) {
-    return `<div class="nc-empty"><p>No notifications yet. Stay tuned for goal breaches.</p></div>`;
-  }
-  
+  const isBlocked = notificationPermission() === "denied";
+  const hasEnabled = notificationPermission() === "granted";
+
   const formatTime = (isoStr) => {
-    const date = new Date(isoStr);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) {
-      return `Today ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-    }
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
+    const date = getPKTDate(new Date(isoStr));
+    const now = getPKTDate();
+    const todayKey = getPKTDateKey(now);
+    const dateKey = date.toISOString().slice(0, 10);
+    const timeLabel = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+    if (dateKey === todayKey) return `Today ${timeLabel}`;
+    const yesterdayKey = getPKTDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+    if (dateKey === yesterdayKey) return `Yesterday ${timeLabel}`;
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   };
-  
+
   const renderNotif = (n) => `
   <div class="nc-item nc-item-breached" data-notif-id="${n.id}">
     <span class="nc-icon"><i data-lucide="alert-triangle"></i></span>
     <div class="nc-content">
-      <div class="nc-goal-name">${escapeHtml(n.goal_name)}</div>
+      <div class="nc-content-head">
+        <span class="nc-goal-name">${escapeHtml(n.goal_name)}</span>
+        <span class="nc-time">${formatTime(n.breached_at)}</span>
+      </div>
       <div class="nc-message">${escapeHtml(n.value_at_breach)} / ${escapeHtml(n.target)}</div>
-      <div class="nc-time">${formatTime(n.breached_at)}</div>
     </div>
     <button class="nc-dismiss" data-dismiss-notif="${n.id}" title="Dismiss" aria-label="Dismiss">
       <i data-lucide="x"></i>
     </button>
   </div>`;
-  
+
+  if (totalCount === 0) {
+    return `<div class="nc-empty"><p>No notifications yet</p></div>`;
+  }
+
   const unreadBadge = unreadCount > 0 ? `<span class="nc-badge">${unreadCount} new</span>` : "";
-  
+
   return `
   <div class="nc-head">
     <div class="nc-head-left">
@@ -268,25 +286,56 @@ function notificationCenterHtml() {
   <div class="nc-list">
     ${todayNotif.length ? `
     <div class="nc-group">
-      <div class="nc-group-label">Today</div>
+      <div class="nc-group-label">TODAY</div>
       ${todayNotif.map(renderNotif).join("")}
     </div>` : ""}
     ${olderNotif.length ? `
     <div class="nc-group">
-      <div class="nc-group-label">Earlier</div>
+      <div class="nc-group-label">EARLIER</div>
       ${olderNotif.map(renderNotif).join("")}
     </div>` : ""}
   </div>`;
 }
 
+let notificationDocClickWired = false;
+
 function wire(container) {
   container.querySelector("#btn-add-goal")?.addEventListener("click", () => openCustomGoalModal(() => render(container)));
-  container.querySelector("#btn-notify")?.addEventListener("click", async () => {
-    const res = await requestNotificationPermission();
-    if (res === "granted") toast("Desktop notifications enabled.", "success");
-    else if (res === "denied") toast("Notifications blocked in browser settings.", "warning");
-    else if (res === "unsupported") toast("Notifications not supported in this browser.", "warning");
-    render(container);
+  const notifyBtn = container.querySelector("#btn-notify");
+  const dropdown = container.querySelector("#notification-dropdown");
+
+  notifyBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const expanded = dropdown?.getAttribute("hidden") === null;
+    if (dropdown) {
+      if (expanded) {
+        dropdown.hidden = true;
+        notifyBtn.setAttribute("aria-expanded", "false");
+      } else {
+        dropdown.hidden = false;
+        notifyBtn.setAttribute("aria-expanded", "true");
+      }
+    }
+  });
+
+  if (!notificationDocClickWired) {
+    notificationDocClickWired = true;
+    document.addEventListener("click", (event) => {
+      const dropdownEl = document.querySelector("#notification-dropdown");
+      const notifyEl = document.querySelector("#btn-notify");
+      if (!dropdownEl || !notifyEl || dropdownEl.hidden) return;
+      if (!dropdownEl.contains(event.target) && !notifyEl.contains(event.target)) {
+        dropdownEl.hidden = true;
+        notifyEl.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  container.querySelector("#btn-notify")?.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      notifyBtn?.click();
+    }
   });
 
   container.querySelector("#goals-acct-select")?.addEventListener("change", async (e) => {

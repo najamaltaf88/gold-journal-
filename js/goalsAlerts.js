@@ -1,7 +1,14 @@
 // Goals breach alerts, dismiss state, desktop notifications, status strip helpers.
 
 import { state } from "./store.js";
-import { evaluateAllGoals, evaluateAllGoalsIncludingInactive } from "./goalsEngine.js";
+import {
+  evaluateAllGoals,
+  evaluateAllGoalsIncludingInactive,
+  getPKTDateKey,
+  getPKTWeekStartKey,
+  getPKTMonthKey,
+  isPKTDateInCurrentPeriod,
+} from "./goalsEngine.js";
 
 let flashIds = new Set();
 
@@ -11,10 +18,6 @@ let flashIds = new Set();
 
 const BREACH_LOG_KEY = "gj_breach_log";
 const MAX_BREACH_LOG_SIZE = 30;
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function getBreachLog() {
   try {
@@ -31,40 +34,18 @@ function saveBreachLog(log) {
   } catch { /* ignore */ }
 }
 
-function getWeekStart(date = new Date()) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff)).toISOString().slice(0, 10);
-}
-
-function getMonthKey(date = new Date()) {
-  return date.toISOString().slice(0, 7);
-}
-
 function breachIdKey(goalId, dateKey) {
   return `${goalId}_${dateKey}`;
 }
 
 function getPeriodKey(period) {
-  if (period === "weekly") return getWeekStart();
-  if (period === "monthly") return getMonthKey();
-  return today();
+  if (period === "weekly") return getPKTWeekStartKey();
+  if (period === "monthly") return getPKTMonthKey();
+  return getPKTDateKey();
 }
 
 function isDateInCurrentPeriod(dateKey, period) {
-  if (period === "daily") return dateKey === today();
-  if (period === "weekly") {
-    const weekStart = getWeekStart();
-    const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000)
-      .toISOString().slice(0, 10);
-    return dateKey >= weekStart && dateKey <= weekEnd;
-  }
-  if (period === "monthly") {
-    const currentMonth = getMonthKey();
-    return dateKey.slice(0, 7) === currentMonth;
-  }
-  return false;
+  return isPKTDateInCurrentPeriod(dateKey, period);
 }
 
 function addToBreachLog(goalId, goalName, period, status, displayCurrent, displayTarget) {
@@ -145,6 +126,15 @@ export function getNotificationCenter() {
   };
 }
 
+export function cleanupBreachLog() {
+  const todayPKT = getPKTDateKey();
+  const log = getBreachLog();
+  const cleaned = log.filter((entry) => !(entry.period === "daily" && entry.date_key !== todayPKT));
+  if (cleaned.length !== log.length) {
+    saveBreachLog(cleaned);
+  }
+}
+
 export function markAllNotificationsRead() {
   const log = getBreachLog();
   log.forEach((e) => {
@@ -156,6 +146,10 @@ export function markAllNotificationsRead() {
 // ═══════════════════════════════════════════════════════════════
 // LEGACY DISMISS FUNCTIONS (kept for compatibility)
 // ═══════════════════════════════════════════════════════════════
+
+function today() {
+  return getPKTDateKey();
+}
 
 function dismissKey(goalId) {
   return `gj-goal-dismiss-${state.user?.id}-${state.currentAccountId}-${goalId}-${today()}`;
@@ -268,6 +262,7 @@ export function wireGoalsTradeLog(container) {
 }
 
 export function processGoalNotifications() {
+  cleanupBreachLog();
   const breached = getBreachedGoals().filter((e) => e.goal.notify_on_breach);
   
   for (const e of breached) {
