@@ -144,8 +144,11 @@ function longestLossStreak(trades) {
 }
 
 function revengeBreach(trades, minMinutes) {
+  const timestamped = trades.filter((t) => t.created_at);
+  if (!timestamped.length) return { breached: false, minGap: null };
+
   const byDay = new Map();
-  for (const t of trades) {
+  for (const t of timestamped) {
     if (!byDay.has(t.trade_date)) byDay.set(t.trade_date, []);
     byDay.get(t.trade_date).push(t);
   }
@@ -155,6 +158,7 @@ function revengeBreach(trades, minMinutes) {
     const sorted = dayTrades.slice().sort((a, b) => tradeTs(a) - tradeTs(b));
     for (let i = 0; i < sorted.length - 1; i++) {
       if (sorted[i].result !== "Loss") continue;
+      if (!sorted[i].created_at || !sorted[i + 1].created_at) continue;
       const gapMin = (tradeTs(sorted[i + 1]) - tradeTs(sorted[i])) / 60000;
       if (gapMin < minMinutes) breached = true;
       if (gapMin < minGap) minGap = gapMin;
@@ -373,16 +377,16 @@ export function monthHistory(goals, year, month) {
 
   const results = active.map((g) => {
     const ev = evaluateGoal(g, ref);
-    const trades = tradesInRange(periodRange(g.period, ref));
+    const goalTrades = tradesInRange(periodRange(g.period, ref));
     const hasData = g.type === "weekly_review"
-      ? reviewsInRange(range).length > 0
-      : trades.length > 0 || g.type === "weekly_review";
-    if (!hasData && ev.status === "PENDING") return { goal: g, status: "PENDING" };
-    return { goal: g, status: ev.status === "PENDING" && hasData ? "BREACHED" : ev.status };
+      ? reviewCount > 0
+      : goalTrades.length > 0;
+    if (!hasData) return { goal: g, status: "PENDING" };
+    return { goal: g, status: ev.status === "PENDING" ? "BREACHED" : ev.status };
   });
   const met = results.filter((r) => r.status === "MET").length;
   const total = results.filter((r) => r.status !== "PENDING").length;
-  return { year, month, results, met, total: total || active.length };
+  return { year, month, results, met, total };
 }
 
 export function listPastMonths(count = 6) {

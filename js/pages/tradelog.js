@@ -1,5 +1,5 @@
 import { state, ledger, tradeRunningBalance, currentAccount, saveTrade, deleteTrade, clearAllTrades, saveCash, uploadScreenshot, signedUrl } from "../store.js";
-import { breachBannersHtml, goalsStatusStripHtml, wireGoalsTradeLog, processGoalNotifications } from "../goalsAlerts.js";
+import { breachBannersHtml, goalsStatusStripHtml, wireGoalsTradeLog, refreshGoalAlerts } from "../goalsAlerts.js";
 import { toast, confirmDialog, fmtMoney, fmtNum, fmtDate, fmtRR, todayISO, escapeHtml, countUp, optionsHtml, skeletonRows } from "../ui.js";
 import { openModal } from "../modal.js";
 import { exportTradesPDF } from "../export.js";
@@ -21,7 +21,7 @@ let loading = false;
 export function setLoading(v) { loading = v; }
 
 export function render(container) {
-  processGoalNotifications();
+  refreshGoalAlerts();
   const acc = currentAccount();
   const l = ledger();
   const trades = filtered();
@@ -269,7 +269,11 @@ function wire(container) {
     if (del) {
       const ok = await confirmDialog({ title: "Delete trade?", body: "This can't be undone.", confirmText: "Delete" });
       if (!ok) return;
-      try { await deleteTrade(del.dataset.del); toast("Trade deleted.", "success"); }
+      try {
+        await deleteTrade(del.dataset.del);
+        toast("Trade deleted.", "success");
+        refreshGoalAlerts();
+      }
       catch (err) { toast(err.message, "error"); }
     }
   });
@@ -407,6 +411,7 @@ export function openTradeModal(trade, onDone, { duplicate = false } = {}) {
       };
       await saveTrade(payload, isEdit ? trade.id : null);
       toast(isEdit ? "Trade updated." : "Trade saved.", "success");
+      refreshGoalAlerts();
       m.close();
       onDone?.();
     } catch (err) {

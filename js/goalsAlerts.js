@@ -114,7 +114,7 @@ export function getNotificationCenter() {
   cleanupBreachLog();
   const log = getBreachLog().filter((e) => !e.dismissed);
   const notifications = log.filter((e) => isDateInCurrentPeriod(e.date_key, e.period));
-  const unreadCount = log.filter((e) => !e.read).length;
+  const unreadCount = notifications.filter((e) => !e.read).length;
 
   return {
     notifications,
@@ -263,6 +263,12 @@ export function wireGoalsTradeLog(container) {
       window.dispatchEvent(new CustomEvent("gj:navigate", { detail: { page: "goals" } }));
     });
   });
+}
+
+export function refreshGoalAlerts() {
+  cleanupBreachLog();
+  processGoalNotifications();
+  window.dispatchEvent(new CustomEvent("gj:goals-updated"));
 }
 
 export function processGoalNotifications() {

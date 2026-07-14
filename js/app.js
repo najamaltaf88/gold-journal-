@@ -404,6 +404,10 @@ async function promptNewPassword() {
   else toast("Password updated — you're signed in.", "success");
 }
 
+window.addEventListener("gj:goals-updated", () => {
+  renderGoalsNavBadge();
+});
+
 window.addEventListener("gj:navigate", (e) => {
   if (e.detail?.page) navigate(e.detail.page);
 });
