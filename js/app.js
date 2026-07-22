@@ -38,12 +38,12 @@ async function boot() {
   initPWA();
   wireSplash();
   if (!isConfigured()) {
-    finishSplash(() => renderConfigError(root()));
+    finishSplash(() => renderAuth(root()));
     return;
   }
   const c = getSupabase();
   if (!c) {
-    finishSplash(() => renderConfigError(root()));
+    finishSplash(() => renderAuth(root()));
     return;
   }
   const { data } = await c.auth.getSession();
