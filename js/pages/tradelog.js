@@ -1,4 +1,5 @@
 import { state, ledger, tradeRunningBalance, currentAccount, saveTrade, deleteTrade, clearAllTrades, saveCash, uploadScreenshot, signedUrl } from "../store.js";
+import { breachBannersHtml, goalsStatusStripHtml, wireGoalsTradeLog, refreshGoalAlerts } from "../goalsAlerts.js";
 import { toast, confirmDialog, fmtMoney, fmtNum, fmtDate, fmtRR, todayISO, escapeHtml, countUp, optionsHtml, skeletonRows } from "../ui.js";
 import { openModal } from "../modal.js";
 import { exportTradesPDF } from "../export.js";
@@ -7,19 +8,20 @@ import { openFullReport } from "../fullReport.js";
 const ALL_COLUMNS = [
   ["idx", "#"], ["date", "Date"], ["session", "Session"], ["side", "Side"], ["level", "Level"],
   ["timeframe", "TF"], ["setup", "Setup"], ["mistake", "Mistake"], ["hold", "Hold"],
-  ["market", "Market"], ["bias", "Bias"], ["confirm", "Confirm"], ["sl", "SL"], ["tp", "TP"],
+  ["market", "Market"], ["bias", "Bias"], ["confirm", "Confirm"], ["execution", "Execution"], ["sl", "SL"], ["tp", "TP"],
   ["patience", "Patience"], ["risk", "Risk $"], ["reward", "Reward $"], ["rr", "R:R"],
   ["result", "Result"], ["pnl", "P&L"], ["balance", "Balance"], ["notes", "Notes"], ["actions", "Actions"],
 ];
 const DEFAULT_HIDDEN = new Set(["mistake", "hold", "market", "bias", "confirm", "sl", "tp"]);
 
-const filters = { search: "", result: "", session: "", setup: "" };
+const filters = { search: "", result: "", session: "", setup: "", execution: "" };
 let hiddenCols = new Set(JSON.parse(localStorage.getItem("gj-hidden-cols") || "null") || [...DEFAULT_HIDDEN]);
 let loading = false;
 
 export function setLoading(v) { loading = v; }
 
 export function render(container) {
+  refreshGoalAlerts();
   const acc = currentAccount();
   const l = ledger();
   const trades = filtered();
@@ -44,6 +46,8 @@ export function render(container) {
     </div>
   </div>
 
+  <div class="goal-breach-stack" id="goal-breach-stack">${breachBannersHtml()}</div>
+
   <div class="stat-strip">
     ${statCard("Balance", "balance", fmtMoney(l.balance), "wallet", true)}
     ${statCard("Win Rate", "winrate", "", "target", false, winRate)}
@@ -51,12 +55,15 @@ export function render(container) {
     ${statCard("Trades", "count", "", "list", false, state.trades.length, true)}
   </div>
 
+  ${goalsStatusStripHtml()}
+
   <div class="toolbar glass">
     <div class="toolbar-left">
       <div class="search-box"><i data-lucide="search"></i><input id="f-search" placeholder="Search trades…" value="${escapeHtml(filters.search)}"></div>
       <select id="f-result" class="mini-select"><option value="">All Results</option>${optionsHtml([...state.options.results, "Deposit", "Withdraw"], filters.result)}</select>
       <select id="f-session" class="mini-select">${optionsHtml(state.options.sessions, filters.session, { placeholder: "All Sessions" })}</select>
       <select id="f-setup" class="mini-select">${optionsHtml(state.options.setupQuality, filters.setup, { placeholder: "All Setups" })}</select>
+      <select id="f-execution" class="mini-select">${optionsHtml(state.options.executionType, filters.execution, { placeholder: "All Executions" })}</select>
     </div>
     <div class="toolbar-right">
       <div class="dropdown" id="cols-dd">
@@ -98,6 +105,7 @@ export function render(container) {
   countUp(container.querySelector('[data-stat="count"]'), state.trades.length);
 
   wire(container);
+  wireGoalsTradeLog(container);
 }
 
 function statCard(label, key, value, icon, money, num, plain) {
@@ -123,8 +131,23 @@ function filtered() {
       if (filters.result && t.result !== filters.result) return false;
       if (filters.session && t.session !== filters.session) return false;
       if (filters.setup && t.setup_quality !== filters.setup) return false;
+      if (filters.execution && t.execution_type !== filters.execution) return false;
       if (q) {
-        const hay = [t.notes, t.setup_quality, t.level, t.session, t.side, t.result, t.mistake].join(" ").toLowerCase();
+        const hay = [
+          t.notes,
+          t.setup_quality,
+          t.level,
+          t.session,
+          t.side,
+          t.result,
+          t.execution_type,
+          t.confirmation_type,
+          t.market_condition,
+          t.bias_alignment,
+          t.sl_placement,
+          t.tp_placement,
+          t.mistake,
+        ].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -151,6 +174,7 @@ function rowsHtml(trades, l) {
         market: escapeHtml(t.market_condition || ""),
         bias: escapeHtml(t.bias_alignment || ""),
         confirm: escapeHtml(t.confirmation_type || ""),
+        execution: escapeHtml(t.execution_type || "—"),
         sl: escapeHtml(t.sl_placement || ""),
         tp: escapeHtml(t.tp_placement || ""),
         patience: t.patience_score ?? "",
@@ -184,7 +208,8 @@ function wire(container) {
   container.querySelector("#f-result").addEventListener("change", (e) => { filters.result = e.target.value; refreshBody(container); });
   container.querySelector("#f-session").addEventListener("change", (e) => { filters.session = e.target.value; refreshBody(container); });
   container.querySelector("#f-setup").addEventListener("change", (e) => { filters.setup = e.target.value; refreshBody(container); });
-  container.querySelector("#btn-clear-filters").addEventListener("click", () => { filters.search = filters.result = filters.session = filters.setup = ""; rerender(); });
+  container.querySelector("#f-execution").addEventListener("change", (e) => { filters.execution = e.target.value; refreshBody(container); });
+  container.querySelector("#btn-clear-filters").addEventListener("click", () => { filters.search = filters.result = filters.session = filters.setup = filters.execution = ""; rerender(); });
 
   container.querySelector("#btn-new").addEventListener("click", () => openTradeModal(null, rerender));
   container.querySelector("#btn-dup").addEventListener("click", () => {
@@ -244,7 +269,11 @@ function wire(container) {
     if (del) {
       const ok = await confirmDialog({ title: "Delete trade?", body: "This can't be undone.", confirmText: "Delete" });
       if (!ok) return;
-      try { await deleteTrade(del.dataset.del); toast("Trade deleted.", "success"); }
+      try {
+        await deleteTrade(del.dataset.del);
+        toast("Trade deleted.", "success");
+        refreshGoalAlerts();
+      }
       catch (err) { toast(err.message, "error"); }
     }
   });
@@ -284,6 +313,7 @@ export function openTradeModal(trade, onDone, { duplicate = false } = {}) {
       ${field("Confirmation Type", sel("confirmation_type", o.confirmationType, t.confirmation_type))}
     </div></div>
     <div class="form-section"><h6>Execution</h6><div class="grid-2">
+      ${field("Execution Type", sel("execution_type", o.executionType, t.execution_type))}
       ${field("Market Condition", sel("market_condition", o.marketCondition, t.market_condition))}
       ${field("Direction vs Bias", sel("bias_alignment", o.biasAlignment, t.bias_alignment))}
       ${field("SL Placement", sel("sl_placement", o.slPlacement, t.sl_placement))}
@@ -307,6 +337,23 @@ export function openTradeModal(trade, onDone, { duplicate = false } = {}) {
     </div>
     <div class="form-section"><h6>Notes</h6>
       ${field("", `<textarea name="notes" rows="3" placeholder="What happened, how you felt, lessons…">${escapeHtml(t.notes || "")}</textarea>`)}
+    </div>
+    <div class="form-section">
+      <h6>Emotions</h6>
+      <div class="emotion-notes-grid">
+        <label class="field">
+          <span>😌 Before Trade</span>
+          <textarea name="emotion_before" rows="2" placeholder="How were you feeling before entering? e.g. Calm, focused, dar raha tha, nervous about news…">${escapeHtml(t.emotion_before || "")}</textarea>
+        </label>
+        <label class="field">
+          <span>🧠 During Trade</span>
+          <textarea name="emotion_during" rows="2" placeholder="What were you thinking while in the trade? e.g. Confident in setup, wanted to exit early, SL move karna chahta tha…">${escapeHtml(t.emotion_during || "")}</textarea>
+        </label>
+        <label class="field">
+          <span>😤 After Trade</span>
+          <textarea name="emotion_after" rows="2" placeholder="How did you feel after closing? e.g. Satisfied, frustrated, gussa aya, should have held longer…">${escapeHtml(t.emotion_after || "")}</textarea>
+        </label>
+      </div>
     </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
@@ -364,6 +411,7 @@ export function openTradeModal(trade, onDone, { duplicate = false } = {}) {
         timeframe: fd.get("timeframe") || null,
         setup_quality: fd.get("setup_quality") || null,
         confirmation_type: fd.get("confirmation_type") || null,
+        execution_type: fd.get("execution_type") || null,
         market_condition: fd.get("market_condition") || null,
         bias_alignment: fd.get("bias_alignment") || null,
         sl_placement: fd.get("sl_placement") || null,
@@ -376,10 +424,14 @@ export function openTradeModal(trade, onDone, { duplicate = false } = {}) {
         pnl: Number(fd.get("pnl") || 0),
         result: fd.get("result") || null,
         notes: fd.get("notes") || null,
+        emotion_before: fd.get("emotion_before") || null,
+        emotion_during: fd.get("emotion_during") || null,
+        emotion_after: fd.get("emotion_after") || null,
         screenshot_path,
       };
       await saveTrade(payload, isEdit ? trade.id : null);
       toast(isEdit ? "Trade updated." : "Trade saved.", "success");
+      refreshGoalAlerts();
       m.close();
       onDone?.();
     } catch (err) {
@@ -421,7 +473,10 @@ async function openViewModal(id) {
     ["Patience", t.patience_score], ["Mistake", t.mistake], ["Hold", t.hold_quality],
     ["Risk $", fmtNum(t.risk_amount)], ["Reward $", fmtNum(t.reward_amount)], ["R:R", rr],
     ["Result", t.result], ["P&L", fmtMoney(t.pnl)], ["Balance", fmtMoney(tradeRunningBalance(t.id))],
-  ];
+    ["Before Trade", t.emotion_before],
+    ["During Trade", t.emotion_during],
+    ["After Trade", t.emotion_after],
+  ].filter(([, v]) => v != null && String(v).trim() !== "");
   const bodyHtml = `
   <div class="view-grid">
     ${rows.map(([k, v]) => `<div class="view-item"><span class="vk">${k}</span><span class="vv">${escapeHtml(v ?? "—")}</span></div>`).join("")}

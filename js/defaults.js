@@ -53,6 +53,12 @@ export const DEFAULT_OPTIONS = {
     "Open TP",
     "Manually Exit",
   ],
+  executionType: [
+    "Manual Direct",
+    "Limit Order",
+    "Stop Order",
+    "Manual After Confirmation",
+  ],
   skipReasons: [
     "Fear - H1/15m too slow",
     "Fear - SL looked too big",
@@ -76,6 +82,31 @@ export const DEFAULT_OPTIONS = {
   sides: ["Buy", "Sell"],
 };
 
+// Default trading rules pre-loaded for every new daily plan entry.
+export const DEFAULT_TRADING_RULES = [
+  { id: "max_trades", text: "Maximum 3 trades today. Stop after 3.", is_default: true },
+  { id: "max_loss", text: "Stop trading if daily loss exceeds my limit.", is_default: true },
+  { id: "no_revenge", text: "After a loss, wait 30 minutes before next entry.", is_default: true },
+  { id: "no_fomo", text: "No chasing moves. Missed entry = wait for next setup.", is_default: true },
+  { id: "setup_quality", text: "Only take A or A+ setups today.", is_default: true },
+  { id: "sl_no_move", text: "Never move SL against the trade once set.", is_default: true },
+  { id: "no_news", text: "No trades 30 minutes before/after high-impact news.", is_default: true },
+  { id: "screenshot", text: "Take screenshot for every trade. No exceptions.", is_default: true },
+];
+
+export const EMOTION_OPTIONS = [
+  { emoji: "😌", label: "Calm" },
+  { emoji: "😤", label: "Frustrated" },
+  { emoji: "😨", label: "Anxious" },
+  { emoji: "😴", label: "Tired" },
+  { emoji: "😎", label: "Confident" },
+  { emoji: "🤑", label: "Greedy" },
+  { emoji: "😑", label: "Distracted" },
+  { emoji: "💪", label: "Focused" },
+];
+
+export const BIAS_OPTIONS = ["Bullish", "Bearish", "Neutral", "No clear bias"];
+
 // Human-friendly labels for each editable option list (Options page).
 export const OPTION_LABELS = {
   sessions: "Sessions",
@@ -89,6 +120,7 @@ export const OPTION_LABELS = {
   confirmationType: "Confirmation Type",
   slPlacement: "SL Placement",
   tpPlacement: "TP Placement",
+  executionType: "Execution Type",
   skipReasons: "Skipped Trade Reasons",
   skipOutcomes: "Skipped Trade Outcomes",
   results: "Results",

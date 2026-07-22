@@ -1,6 +1,6 @@
 /* Gold Journal service worker — offline app shell + runtime caching.
  * Bump CACHE_VERSION on every deploy so clients detect a new version. */
-const CACHE_VERSION = "gj-v2";
+const CACHE_VERSION = "gj-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -23,8 +23,11 @@ const APP_SHELL = [
   "js/store.js",
   "js/supabaseClient.js",
   "js/ui.js",
+  "js/goalsAlerts.js",
+  "js/goalsEngine.js",
   "js/pages/ai.js",
   "js/pages/analysis.js",
+  "js/pages/goals.js",
   "js/pages/missed.js",
   "js/pages/options.js",
   "js/pages/pnl.js",

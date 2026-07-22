@@ -12,17 +12,20 @@ import { initPWA, promptInstall, applyUpdate, isIOS, isStandalone, canPromptInst
 import * as tradelog from "./pages/tradelog.js";
 import * as missed from "./pages/missed.js";
 import * as analysis from "./pages/analysis.js";
+import * as goals from "./pages/goals.js";
 import * as pnl from "./pages/pnl.js";
-import * as weekly from "./pages/weekly.js";
+import * as plan from "./pages/plan.js";
 import * as ai from "./pages/ai.js";
 import * as options from "./pages/options.js";
+import { getNotificationCenter } from "./goalsAlerts.js";
 
 const PAGES = {
   tradelog: { title: "Trade Log", icon: "candlestick-chart", mod: tradelog },
   missed: { title: "Missed", icon: "eye-off", mod: missed },
   analysis: { title: "Analysis", icon: "bar-chart-3", mod: analysis },
+  goals: { title: "Goals", icon: "target", mod: goals },
   pnl: { title: "PnL", icon: "calendar-days", mod: pnl },
-  weekly: { title: "Weekly Review", icon: "notebook-pen", mod: weekly },
+  plan: { title: "Plan & Execution", icon: "clipboard-list", mod: plan },
   ai: { title: "AI Mentor", icon: "brain", mod: ai },
   options: { title: "Options", icon: "settings", mod: options },
 };
@@ -35,12 +38,12 @@ async function boot() {
   initPWA();
   wireSplash();
   if (!isConfigured()) {
-    finishSplash(() => renderConfigError(root()));
+    finishSplash(() => renderAuth(root()));
     return;
   }
   const c = getSupabase();
   if (!c) {
-    finishSplash(() => renderConfigError(root()));
+    finishSplash(() => renderAuth(root()));
     return;
   }
   const { data } = await c.auth.getSession();
@@ -193,6 +196,7 @@ function renderShell() {
   renderSidebarUser();
   renderAccounts();
   renderSidebarStats();
+  renderGoalsNavBadge();
   updateSync(state.sync);
   renderDiagnostics();
   refreshInstallUI();
@@ -319,6 +323,23 @@ function renderSidebarStats() {
     <div class="mini-stat"><span>Trades</span><b>${state.trades.length}</b></div>`;
 }
 
+function renderGoalsNavBadge() {
+  const unread = getNotificationCenter().unreadCount;
+  const btn = root().querySelector('.nav-item[data-page="goals"]');
+  if (!btn) return;
+  let badge = btn.querySelector('.nav-badge');
+  if (unread > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'nav-badge';
+      btn.appendChild(badge);
+    }
+    badge.textContent = unread;
+  } else {
+    badge?.remove();
+  }
+}
+
 function updateSync(status) {
   const el = root().querySelector("#sb-sync");
   if (!el) return;
@@ -356,6 +377,11 @@ function navigate(page) {
   void pageEl.offsetWidth;
   pageEl.classList.add("fade-in");
   PAGES[page].mod.render(pageEl);
+  if (page === "goals") {
+    const badge = root().querySelector('.nav-item[data-page="goals"] .nav-badge');
+    badge?.remove();
+    renderGoalsNavBadge();
+  }
 }
 
 // ---------------- reactivity ----------------
@@ -377,5 +403,13 @@ async function promptNewPassword() {
   if (error) toast(error.message, "error");
   else toast("Password updated — you're signed in.", "success");
 }
+
+window.addEventListener("gj:goals-updated", () => {
+  renderGoalsNavBadge();
+});
+
+window.addEventListener("gj:navigate", (e) => {
+  if (e.detail?.page) navigate(e.detail.page);
+});
 
 document.addEventListener("DOMContentLoaded", boot);
